@@ -1,6 +1,6 @@
 #!/bin/sh
 username="romariorobby"
-reponame="rarbstest"
+reponame="rarbs"
 branch="master"
 pauseins="sleep 0.1s"
 DEBUG=0
@@ -9,6 +9,7 @@ DIRS="$(dirname "$0")"
 [ -z "$progsfile" ] && progsfile="https://raw.githubusercontent.com/$username/$reponame/$branch/progs.csv"
 [ -z "$brewtapfile" ] && brewtapfile="https://raw.githubusercontent.com/$username/$reponame/$branch/brewtap.csv"
 [ -z "$gpgfile" ] && gpgfile="https://raw.githubusercontent.com/$username/dotfiles/main/dot_local/share/vault/encrypted_aqs.tar.gz.asc"
+[ -z "$prechrootfile" ] && prechrootfile="https://raw.githubusercontent.com/$username/$reponame/$branch/prechroot"
 # search in gtok
 [ -z "$gpgprivrepo" ] && gpgprivrepo="https://raw.githubusercontent.com/$username/dotfiles/main/dot_local/share/vault/encrypted_gtok.asc"
 
@@ -33,22 +34,22 @@ msg(){ \
 		shift $((OPTIND-1))
 }
 welcomemsg() { \
-	dialog --title "Welcome!" \
-		   --msgbox "Lazy Bootstrap\\n\\nThis script will automatically install a fully-featured $OS desktop.\\n\\n-Romario" 10 60
+    dialog --title "Welcome!" \
+           --msgbox "Lazy Bootstrap\\n\\nThis script will automatically install a fully-featured $OS desktop.\\n\\n-Romario" 10 60
     [[ "$OS" == "Linux" || "$OS" == "GNU*" ]] && \
         dialog --colors \
-			   --title "Important Note!" \
-			   --yes-label "All ready!" \
-			   --no-label "Return..." \
-			   --yesno "If you running GNU/LINUX - $distro, Be sure the computer you are using has current package manager updates and refreshed keyrings.\\n\\nIf it does not, the installation of some programs might fail." 8 70
+               --title "Important Note!" \
+               --yes-label "All ready!" \
+               --no-label "Return..." \
+               --yesno "If you running GNU/LINUX - $distro, Be sure the computer you are using has current package manager updates and refreshed keyrings.\\n\\nIf it does not, the installation of some programs might fail." 8 70
 }
 error() { clear; printf "ERROR:\\n%s\\n" "$1" >&2; exit 1;}
 
 preinstallmsg() { \
-	dialog --title "Let's get this party started!" \
-		   --yes-label "Let's go!" \
-		   --no-label "No, nevermind!" \
-		   --yesno "The rest of the installation will now be totally automated, so you can sit back and relax.\\n\\nIt will take some time, but when done, you can relax even more with your complete system.\\n\\nNow just press <Let's go!> and the system will begin installation!" 13 60 || { clear; exit 1; }
+    dialog --title "Let's get this party started!" \
+           --yes-label "Let's go!" \
+           --no-label "No, nevermind!" \
+           --yesno "The rest of the installation will now be totally automated, so you can sit back and relax.\\n\\nIt will take some time, but when done, you can relax even more with your complete system.\\n\\nNow just press <Let's go!> and the system will begin installation!" 13 60 || { clear; exit 1; }
 	}
 
 newperms() { # Set special sudoers settings for install (or after).
@@ -133,37 +134,55 @@ finalize(){ \
 			   --msgbox "Congrats, $name! Provided there were no hidden errors, the script completed successfully and all the programs and configuration files should be in place.\\n\\nTo run the new graphical environment, log out and log back in as your new user, then run the command \"startx\" to start the graphical environment (it will start automatically in tty1).\\n\\n.t Romario" 12 80
 	fi
 }
+is_liveusb(){
+	liveusb=""
+	[[ "$OS" != "Linux" ]] && return
+	if cat /proc/1/cgroup | tail -1 | grep -q "container"; then
+		echo "It's not running live installer"
+		# error "It's not running live installer"
+	else
+		full_fs=$(df ~ | tail -1 | awk '{print $1;}')  # /dev/sda1
+		fs=$(basename $full_fs)                        # sda1
+		if grep -q "$fs" /proc/partitions; then
+			echo "It's not running live installer"
+			# error "It's not running live installer"
+		else
+			liveusb=1
+			# dialog --infobox "Entering Pre-chroot" 10 50
+		fi
+	fi
 
+}
 ### Picking
 modepick(){ \
-	if [[ "$distro" == "Arch Linux" || -f "/etc/artix-release" ]]; then
+	is_liveusb
+	# if [[ "$distro" == "Arch Linux" || -f "/etc/artix-release"]]; then
+	if [[ -n "$liveusb" ]]; then
         mpick=$(dialog --no-cancel \
-			           --backtitle "RARBS Type Picking" \
-					   --radiolist "Select RARBS Mode: " 10 80 3 \
-					   I "Installer (Archlinux)" off \
-					   R "(Re)install (Packages)" on \
-					   P "Post Install" on 3>&1 1>&2 2>&3 3>&1)
+                       --backtitle "RARBS Type Picking" \
+                       --radiolist "Select RARBS Mode: " 10 80 3 \
+                       I "Installer (Archlinux)" off \
+                       R "(Re)install (Packages)" on \
+                       P "Post Install" on 3>&1 1>&2 2>&3 3>&1)
     else
         mpick=$(dialog --no-cancel \
-					   --backtitle "RARBS Type Picking" \
-					   --radiolist "Select RARBS Mode: " 10 80 3 \
-					   R "(Re)install (Packages)" on \
-					   P "Post Install" on 3>&1 1>&2 2>&3 3>&1)
+                       --backtitle "RARBS Type Picking" \
+                       --radiolist "Select RARBS Mode: " 10 80 3 \
+                       R "(Re)install (Packages)" on \
+                       P "Post Install" on 3>&1 1>&2 2>&3 3>&1)
     fi
+	gochroot(){ curl -Ls "$prechrootfile" > prechroot && bash prechroot || error "Exited"; }
 	case $mpick in
-		"I") namempick="Installer" ;;
+		"I") namempick="Installer"
+             dialog --defaultno \
+                    --title "PRE-CHROOT" \
+                    --yesno "Go to Pre-chroot?" 6 30 && gochroot || modepick
+            ;;
         "R") namempick="(Re)install (Packages)" ;;
 		"P") namempick="Post Install" ;;
 	esac
 
-    case $mpick in
-        "I") 
-            dialog --defaultno \
-				   --title "PRE-CHROOT" \
-				   --yesno "Go to Pre-chroot?"  6 30 && curl $prechrootfile > prechroot && bash prechroot || modepick
-            exit
-            ;;
-    esac ;}
+}
 
 wmdepick() { \
     cmd=(dialog --no-cancel \
@@ -204,11 +223,11 @@ wmdepick() { \
 
 typepick() { \
 	tpick=$(dialog --no-cancel \
-	               --backtitle "RARBS Type Picking" \
-				   --radiolist "Select RARBS Type: " 10 60 3 \
-				   B "Base Only" on \
-				   M "Minimal" on \
-				   F "Full" off 3>&1 1>&2 2>&3 3>&1)
+                   --backtitle "RARBS Type Picking" \
+                   --radiolist "Select RARBS Type: " 10 60 3 \
+                   B "Base Only" on \
+                   M "Minimal" on \
+                   F "Full" off 3>&1 1>&2 2>&3 3>&1)
 	case $tpick in
 		"B") nametpick="Base" ;;
 		"M") nametpick="Minimal" ;;
@@ -412,7 +431,7 @@ installpkg() {
         "Linux")
             case "$distro" in
                 "Arch Linux"|"Manjaro Linux")
-					pacman --noconfirm --needed -S "$1" >/dev/null 2>&1 ;;
+                    pacman --noconfirm --needed -S "$1" >/dev/null 2>&1 ;;
             esac
             ;;
     esac ;}
@@ -432,13 +451,15 @@ maintap() {
 maininstall() {
 	echo "$pacinstalled" | grep -q "^$1$" && \
 		dialog --colors \
-			   --title "RARBS Installation" \
-			   --infobox "\Zb\`$1\`\Zn \Z1already installed\Zn from the package manager ($n of $total). \Z1Skipping...\Zn" 5 70 && $pauseins && return 1
+               --title "RARBS Installation" \
+               --infobox "\Zb\`$1\`\Zn \Z1already installed\Zn from the package manager ($n of $total). \Z1Skipping...\Zn" 5 70 && $pauseins && return 1
 	echo "$manualinstalled" | grep -iq "^$1" && \ 
 		dialog --colors \
-			   --title "RARBS Installation" \
-			   --infobox "\Zb\`$1\`\Zn \Z1already installed\Zn in /Applications ($n of $total). \Z1Skipping...\Zn" 5 70 && $pauseins && return 1
-	dialog --colors --title "RARBS Installation" --infobox "Installing \Zb\`$1\`\Zn ($n of $total). $1 $2" 5 70
+               --title "RARBS Installation" \
+               --infobox "\Zb\`$1\`\Zn \Z1already installed\Zn in /Applications ($n of $total). \Z1Skipping...\Zn" 5 70 && $pauseins && return 1
+	dialog --colors \
+           --title "RARBS Installation" \
+           --infobox "Installing \Zb\`$1\`\Zn ($n of $total). $1 $2" 5 70
 	installpkg "$1" ;}
 
 aurinstall() {
